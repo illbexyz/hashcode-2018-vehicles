@@ -1,6 +1,7 @@
 from collections import namedtuple
 from copy import deepcopy
 from enum import Enum
+from os import makedirs, path
 from pprint import pprint
 from random import randint, shuffle
 from typing import List
@@ -95,6 +96,9 @@ def distance(start_pos: Position, end_pos: Position):
 
 
 def generate_output(filepath: str, vehicles: List[Vehicle]):
+    last_slash_index = filepath.rfind("/")
+    if not path.exists(filepath[:last_slash_index]):
+        makedirs(filepath[:last_slash_index])
     with open(filepath, "w") as out_file:
         for v in vehicles:
             out_file.write(str(len(v.ride_ids)))
