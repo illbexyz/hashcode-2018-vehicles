@@ -154,9 +154,19 @@ def choose_greedy(vehicle: Vehicle, rides: List[Ride], avail_ride_ids: List[int]
     return best[0]
 
 
+def choose_possible(vehicle: Vehicle, rides: List[Ride], avail_ride_ids: List[int], curr_turn: int):
+    for r in range(len(avail_ride_ids)):
+        if can_ride_be_made_by_vehicle(vehicle, rides[r], curr_turn):
+            return r
+
+
 def choose_ride(vehicle: Vehicle, rides: List[Ride], avail_ride_ids: List[int], curr_turn: int, bonus: int):
-    ride_id = choose_greedy(vehicle, rides, avail_ride_ids, curr_turn, bonus)
-    return avail_ride_ids.pop(ride_id)
+    # ride_id = choose_greedy(vehicle, rides, avail_ride_ids, curr_turn, bonus)
+    ride_id = choose_possible(vehicle, rides, avail_ride_ids, curr_turn)
+    if ride_id is not None:
+        return avail_ride_ids.pop(ride_id)
+    else:
+        return None
 
 
 def simulate(sim_id: int, turns: int, rides: List[Ride], vehicles: List[Vehicle], bonus: int):
@@ -168,46 +178,95 @@ def simulate(sim_id: int, turns: int, rides: List[Ride], vehicles: List[Vehicle]
         if percentage == 25 or percentage == 50 or percentage == 75:
             print("{}%...".format(percentage))
         for v in vehicles:
-            if len(ride_ids) > 0:
-                # Sta andando alla partenza della ride
-                # Se deve ancora arrivare
-                #     decremento i turni rimanenti
-                # Altrimenti
-                #     controllo che il turno corrente sia >= dell'inizio della ride
-                #         faccio partire il veicolo
-                if v.state == VehicleState.GoingToRide:
-                    if v.remaining_turns > 0:
-                        v.remaining_turns -= 1
-                    else:
-                        assigned_ride = rides[v.ride_ids[-1]]
-                        if t >= assigned_ride.start_turn:
-                            v.state = VehicleState.OnRide
-                            v.remaining_turns = distance(v.pos, assigned_ride.end_pos)
+            # Il veicolo e' fermo, devo assegnargli una ride
+            if v.state == VehicleState.NoRide:
+                if len(ride_ids) > 0:
+                    ride_id = choose_ride(v, rides, ride_ids, t, bonus)
+                    assigned_ride = rides[ride_id]
+                    r_score = ride_score(v, assigned_ride, t, bonus)
+                    score += r_score
+                    v.ride_ids.append(ride_id)
+                    v.state = VehicleState.GoingToRide
+                    v.remaining_turns = distance(v.pos, assigned_ride.start_pos)
+                    assigned_ride.state = RideState.Assigned
+            # Sta andando alla partenza della ride
+            # Se deve ancora arrivare
+            #     decremento i turni rimanenti
+            # Altrimenti
+            #     controllo che il turno corrente sia >= dell'inizio della ride
+            #         faccio partire il veicolo
+            if v.remaining_turns > 0:
+                v.remaining_turns -= 1
+            if v.state == VehicleState.GoingToRide:
+                assigned_ride = rides[v.ride_ids[-1]]
+                if t >= assigned_ride.start_turn:
+                    v.state = VehicleState.OnRide
+                    v.pos = assigned_ride.start_pos
+                    v.remaining_turns = distance(v.pos, assigned_ride.end_pos)
 
-                # Sta eseguendo la ride
-                # Decremento i turni rimanenti
-                # Se e' arrivato
-                #
-                if v.state == VehicleState.OnRide:
-                    v.remaining_turns -= 1
-                    if v.remaining_turns == 0:
-                        v.state = VehicleState.NoRide
-                        satisfied_ride = rides[v.ride_ids[-1]]
-                        v.pos = satisfied_ride.end_pos
-                        satisfied_ride.state = RideState.Done
-                # Il veicolo e' fermo, devo assegnargli una ride
-                if v.state == VehicleState.NoRide:
-                    if len(ride_ids) > 0:
-                        ride_id = choose_ride(v, rides, ride_ids, t, bonus)
+            # Sta eseguendo la ride
+            # Decremento i turni rimanenti
+            # Se e' arrivato
+            #
+            elif v.state == VehicleState.OnRide:
+                if v.remaining_turns == 0:
+                    v.state = VehicleState.NoRide
+                    satisfied_ride = rides[v.ride_ids[-1]]
+                    v.pos = satisfied_ride.end_pos
+                    satisfied_ride.state = RideState.Done
+    return score
+
+
+def simulate2(sim_id: int, turns: int, rides: List[Ride], vehicles: List[Vehicle], bonus: int):
+    ride_ids = [i for i in range(len(rides))]
+    print("Simulation {} begins".format(sim_id))
+    score = 0
+    for t in range(turns):
+        percentage = 100 - ((turns - t) / turns) * 100
+        if percentage == 25 or percentage == 50 or percentage == 75:
+            print("{}%...".format(percentage))
+        for v in vehicles:
+
+            if v.remaining_turns > 0:
+                v.remaining_turns -= 1
+
+            # Il veicolo e' fermo, devo assegnargli una ride
+            if v.state == VehicleState.NoRide:
+                if len(ride_ids) > 0:
+                    ride_id = choose_ride(v, rides, ride_ids, t, bonus)
+                    if ride_id is not None:
                         assigned_ride = rides[ride_id]
                         r_score = ride_score(v, assigned_ride, t, bonus)
                         score += r_score
                         v.ride_ids.append(ride_id)
                         v.state = VehicleState.GoingToRide
-                        v.remaining_turns = distance(v.pos, assigned_ride.start_pos)
+                        v.remaining_turns = distance(v.pos, assigned_ride.start_pos) - 1
                         assigned_ride.state = RideState.Assigned
-    return score
 
+            # Sta andando alla partenza della ride
+            # Se deve ancora arrivare
+            #     decremento i turni rimanenti
+            # Altrimenti
+            #     controllo che il turno corrente sia >= dell'inizio della ride
+            #         faccio partire il veicolo
+            elif v.state == VehicleState.GoingToRide:
+                assigned_ride = rides[v.ride_ids[-1]]
+                if t >= assigned_ride.start_turn:
+                    v.state = VehicleState.OnRide
+                    v.pos = assigned_ride.start_pos
+                    v.remaining_turns = distance(v.pos, assigned_ride.end_pos)
+
+            # Sta eseguendo la ride
+            # Decremento i turni rimanenti
+            # Se e' arrivato
+            #
+            elif v.state == VehicleState.OnRide:
+                if v.remaining_turns == 0:
+                    v.state = VehicleState.NoRide
+                    satisfied_ride = rides[v.ride_ids[-1]]
+                    v.pos = satisfied_ride.end_pos
+                    satisfied_ride.state = RideState.Done
+    return score
 
 debug = True
 # filename = "a_example.in"
@@ -232,18 +291,18 @@ if debug:
     print("Turns\t\t", m_turns)
     print("----------------")
     print()
-    # print("------RIDES-----")
-    # pprint(rides)
-    # print("----------------")
-    # print()
-    # print("----VEHICLES----")
-    # pprint(vehicles)
-    # print("----------------")
+    print("------RIDES-----")
+    pprint(m_rides)
+    print("----------------")
+    print()
+    print("----VEHICLES----")
+    pprint(m_vehicles)
+    print("----------------")
 
-sim_score = simulate(0, m_turns, m_rides, m_vehicles, m_bonus)
+sim_score = simulate2(0, m_turns, m_rides, m_vehicles, m_bonus)
 print("Score: {}".format(sim_score))
 generate_output(out_filepath, m_vehicles)
-
+# pprint(m_vehicles)
 # best_score = 0
 # sim_iteration = 1
 # while True:
